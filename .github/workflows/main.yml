@@ -10,7 +10,7 @@ jobs:
     # yang merupakan fitur berbayar dan memerlukan pendaftaran.
     # Jika Anda memilikinya, ganti 'windows-latest' dengan 'windows-latest-16-cores' (64GB)
     # atau 'windows-latest-32-cores' (128GB).
-    runs-on: windows-latest-32-cores
+    runs-on: windows-latest
     
     # Timeout maksimum untuk job adalah 360 menit (6 jam).
     # 3600 (60 jam) tidak valid dan akan gagal.
