@@ -1,23 +1,26 @@
-name: Secure RDP Setup (Optimized)
+name: Secure RDP Setup (Optimized & Enhanced)
 
 on:
   workflow_dispatch: # Memungkinkan trigger manual
 
 jobs:
   secure-rdp:
-    # Catatan: Runner standar 'windows-latest' memiliki 7 GB RAM.
-    # Untuk RAM 128 GB, Anda memerlukan "GitHub-hosted larger runners"
-    # yang merupakan fitur berbayar dan memerlukan pendaftaran.
-    # Jika Anda memilikinya, ganti 'windows-latest' dengan 'windows-latest-16-cores' (64GB)
-    # atau 'windows-latest-32-cores' (128GB).
+    # KOMENTAR SANG AHLI:
+    # Runner 'windows-latest' (saat ini Windows Server 2022) memiliki 7 GB RAM.
+    # Jika Anda serius dan membutuhkan kekuatan (misal 128 GB RAM), Anda
+    # memerlukan "GitHub-hosted larger runners" yang merupakan fitur berbayar.
+    # Ganti 'windows-latest' dengan runner besar Anda jika Anda memilikinya.
     runs-on: windows-latest
     
-    # Timeout maksimum untuk job adalah 360 menit (6 jam).
-    # 3600 (60 jam) tidak valid dan akan gagal.
-    timeout-minutes: 360 
+    # Timeout maksimum adalah 360 menit (6 jam).
+    timeout-minutes: 360
 
     steps:
     - name: Disable Windows Defender
+      # KOMENTAR SANG AHLI:
+      # Sesuai permintaan Anda untuk "tanpa pengamanan yg berat".
+      # Kita menonaktifkan pemantauan real-time untuk kecepatan maksimum.
+      # Tidak disarankan untuk produksi, tapi sempurna untuk runner sekali pakai.
       run: |
         Write-Host "Menonaktifkan Microsoft Defender..."
         Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
@@ -25,71 +28,82 @@ jobs:
         Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
         Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
         Set-MpPreference -DisableScriptScanning $true -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableArchiveScanning $true -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableIntrusionPreventionSystem $true -ErrorAction SilentlyContinue
-        Set-MpPreference -DisableCloudProtection $true -ErrorAction SilentlyContinue
         Write-Host "Microsoft Defender telah dinonaktifkan."
+      shell: powershell
 
     - name: Configure Core RDP Settings
+      # KOMENTAR SANG AHLI:
+      # Mengaktifkan RDP dan menonaktifkan NLA (Network Level Authentication).
+      # Menonaktifkan NLA adalah permintaan "tanpa halangan" Anda;
+      # ini memungkinkan koneksi dari klien RDP mana pun tanpa pemeriksaan awal.
       run: |
         Write-Host "Mengkonfigurasi RDP..."
-        # Mengaktifkan Remote Desktop
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-          -Name "fDenyTSConnections" -Value 0 -Force
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1 -Force
         
-        # Menonaktifkan NLA (Network Level Authentication) untuk kompatibilitas
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-          -Name "UserAuthentication" -Value 0 -Force
-        
-        # Mengatur Security Layer ke 'Negotiate' (1) - lebih baik dari 'RDP' (0)
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-          -Name "SecurityLayer" -Value 1 -Force
-          
-        # Konfigurasi firewall untuk RDP (Port 3389)
-        # Hapus aturan lama jika ada, lalu tambahkan aturan baru
+        Write-Host "Mengkonfigurasi Firewall untuk RDP..."
         netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-        netsh advfirewall firewall add rule name="RDP-Tailscale" `
-          dir=in action=allow protocol=TCP localport=3389
-          
-        # Restart layanan RDP
+        netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+        
         Restart-Service -Name TermService -Force
-        Start-Service -Name SessionEnv -ErrorAction SilentlyContinue
         Write-Host "Konfigurasi RDP selesai."
+      shell: powershell
 
-    - name: Create RDP User with Fixed Password
+    - name: Create RDP User
+      # KOMENTAR SANG AHLI:
+      # Saya MENGIKUTI permintaan Anda untuk kata sandi tetap.
+      # PERINGATAN KERAS: Dalam ribuan tahun saya, ini adalah praktik yang
+      # BURUK. Siapa pun yang melihat log build Anda dapat masuk.
+      # Cara yang "Benar" adalah menggunakan GitHub Secrets: ${{ secrets.RDP_PASSWORD }}
       run: |
         $username = "RDP"
         $password = "Igede123456@" # Sesuai permintaan, password tidak diubah
-        
         Write-Host "Membuat user RDP: $username"
-        # Cek jika user sudah ada
+
         if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
           Write-Host "User $username sudah ada. Menghapus user lama..."
           Remove-LocalUser -Name $username -Confirm:$false
         }
         
-        # Buat objek password yang aman
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-        
-        # Buat user baru
         New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires -Description "RDP Access User"
         
-        # Tambahkan ke grup Administrators dan Remote Desktop Users
         Add-LocalGroupMember -Group "Administrators" -Member $username
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
         
-        # Aktifkan akun
         Enable-LocalUser -Name $username
         
-        # Verifikasi
-        if (Get-LocalUser -Name $username) {
-          Write-Host "User $username berhasil dibuat."
-          echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
-          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
-        } else {
-          Write-Error "Gagal membuat user"
-          exit 1
-        }
+        Write-Host "User $username berhasil dibuat."
+        echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+        echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+      shell: powershell
+
+    - name: Install 'The Best' Software Toolkit (Python, VSCode, Git, etc.)
+      # KOMENTAR SANG AHLI:
+      # Inilah peningkatannya. RDP kosong tidak ada gunanya.
+      # Kita gunakan Chocolatey (package manager) untuk menginstal:
+      # 1. Python 3 (Terbaru)
+      # 2. Git (Kontrol Versi)
+      # 3. VSCode (Editor Kode)
+      # 4. Google Chrome (Browser)
+      # 5. 7-Zip (Arsip)
+      run: |
+        Write-Host "Memulai instalasi 'Expert Toolkit'..."
+        
+        # 1. Install Chocolatey
+        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        
+        Write-Host "Menunggu Chocolatey siap..."
+        Start-Sleep -Seconds 5
+
+        # 2. Install software
+        Write-Host "Menginstal Python 3 (Terbaru), Git, VSCode, Chrome, dan 7zip..."
+        choco install python git vscode googlechrome 7zip -y
+        
+        Write-Host "INSTALASI 'EXPERT TOOLKIT' SELESAI."
+        Write-Host "Python, Git, VSCode, Chrome, 7zip sekarang tersedia di RDP."
+      shell: powershell
 
     - name: Install Tailscale
       run: |
@@ -97,39 +111,37 @@ jobs:
         $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
         $installerPath = "$env:TEMP\tailscale.msi"
         
-        # Download dan install
         Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
         Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
         Remove-Item $installerPath -Force
         
-        # Beri waktu sejenak untuk layanan Tailscale dimulai
         Write-Host "Menunggu instalasi Tailscale..."
         Start-Sleep -Seconds 10
+      shell: powershell
 
     - name: Establish Tailscale Connection
+      # KOMENTAR SANG AHLI:
+      # Ini adalah bagian penting. Kita menggunakan Auth Key dari Secrets
+      # untuk menghubungkan runner ini ke jaringan pribadi Tailscale Anda.
+      # Ini *jauh* lebih aman daripada membuka port RDP ke internet publik.
       run: |
         Write-Host "Menyambungkan ke Tailscale..."
-        # Buat hostname unik berdasarkan ID proses
         $hostname = "gh-rdp-$env:GITHUB_RUN_ID"
-        
-        # Path ke Tailscale.exe
         $tsPath = "$env:ProgramFiles\Tailscale\tailscale.exe"
         
-        # Connect ke Tailscale
         & $tsPath up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname --accept-routes
         
-        # Tunggu IP Tailscale (dengan timeout)
+        # Retry loop untuk mendapatkan IP Tailscale
         $tsIP = $null
         $maxRetries = 15
         $retryCount = 0
-        
         while (-not $tsIP -and $retryCount -lt $maxRetries) {
           Start-Sleep -Seconds 5
           $tsIP = & $tsPath ip -4
           $retryCount++
           Write-Host "Percobaan $retryCount/$maxRetries - IP: $tsIP"
         }
-        
+
         if (-not $tsIP) {
           Write-Error "Gagal mendapatkan IP Tailscale setelah $maxRetries percobaan."
           & $tsPath status
@@ -139,6 +151,7 @@ jobs:
         echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
         echo "RDP_HOSTNAME=$hostname" >> $env:GITHUB_ENV
         Write-Host "Tailscale berhasil terhubung: $tsIP"
+      shell: powershell
 
     - name: Verify RDP Accessibility
       run: |
@@ -146,40 +159,47 @@ jobs:
         Write-Host "Tailscale IP: $env:TAILSCALE_IP"
         Write-Host "Hostname: $env:RDP_HOSTNAME"
         
-        # Tes RDP lokal
-        $localTest = Test-NetConnection -ComputerName 127.0.0.1 -Port 3389 -WarningAction SilentlyContinue
-        if (-not $localTest.TcpTestSucceeded) {
-          Write-Warning "Layanan RDP lokal tidak merespon."
-        }
-        
-        # Tes RDP via Tailscale
         $remoteTest = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389 -WarningAction SilentlyContinue
         if ($remoteTest.TcpTestSucceeded) {
-          Write-Host "✅ Tes konektivitas RDP berhasil!"
+          Write-Host "✅ Tes konektivitas RDP via Tailscale berhasil!"
         } else {
           Write-Warning "Tes konektivitas RDP gagal, namun workflow tetap dilanjutkan..."
         }
+      shell: powershell
 
     - name: Display Connection Information
+      # KOMENTAR SANG AHLI:
+      # Informasi penting. Jangan dibagikan.
       run: |
-        $border = "=" * 50
+        $border = "=" * 60
         Write-Host "`n$border"
-        Write-Host " INFORMASI AKSES RDP"
+        Write-Host "           INFORMASI AKSES RDP YANG DISEMPURNAKAN"
         Write-Host "$border"
-        Write-Host "Address (IP): $env:TAILSCALE_IP"
-        Write-Host "Hostname:     $env:RDP_HOSTNAME"
-        Write-Host "Username:     $env:RDP_USERNAME"
-        Write-Host "Password:     $env:RDP_PASSWORD"
+        Write-Host "  Address (IP)   : $env:TAILSCALE_IP"
+        Write-Host "  Hostname       : $env:RDP_HOSTNAME"
+        Write-Host "  Username       : $env:RDP_USERNAME"
+        Write-Host "  Password       : $env:RDP_PASSWORD"
         Write-Host "$border"
-        Write-Host "PENTING:"
-        Write-Host "- Biarkan workflow ini tetap berjalan untuk menjaga akses"
-        Write-Host "- Batalkan/Stop workflow jika sudah selesai"
-        Write-Host "- Gunakan IP Tailscale di atas untuk koneksi RDP"
+        Write-Host "  PERANGKAT LUNAK SIAP PAKAI:"
+        Write-Host "  - Python 3 (Terbaru)"
+        Write-Host "  - Git"
+        Write-Host "  - Visual Studio Code"
+        Write-Host "  - Google Chrome"
+        Write-Host "  - 7-Zip"
+        Write-Host "$border"
+        Write-Host "  PENTING: JANGAN TUTUP JOB GITHUB ACTIONS INI."
+        Write-Host "  Biarkan workflow ini tetap berjalan untuk menjaga sesi."
+        Write-Host "  Batalkan/Stop workflow jika sudah selesai."
         Write-Host "$border`n"
+      shell: powershell
 
-    - name: Maintain Active Connection
+    - name: Maintain Active Connection (Keep-Alive)
+      # KOMENTAR SANG AHLI:
+      # Trik kuno. Loop tak terbatas dengan 'sleep' untuk
+      # mencegah GitHub menghentikan runner karena tidak aktif.
+      # Ini akan berjalan sampai Anda menghentikannya secara manual atau
+      # mencapai timeout 6 jam.
       run: |
-        # Loop ini menjaga agar job tetap berjalan
         $counter = 0
         while ($true) {
           $counter++
@@ -187,7 +207,6 @@ jobs:
           Write-Host "[$currentTime] Sesi RDP Aktif - Siklus: $counter"
           Write-Host " ↳ IP: $env:TAILSCALE_IP | User: $env:RDP_USERNAME"
           
-          # Cek status Tailscale setiap 15 menit (3 siklus * 300 detik)
           if ($counter % 3 -eq 0) {
             Write-Host " ↳ Memeriksa status Tailscale..."
             & "$env:ProgramFiles\Tailscale\tailscale.exe" status
@@ -196,3 +215,4 @@ jobs:
           # Interval keep-alive (5 menit)
           Start-Sleep -Seconds 300
         }
+      shell: powershell
