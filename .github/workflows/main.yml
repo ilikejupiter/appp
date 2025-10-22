@@ -1,4 +1,4 @@
-name: Ultimate RDP - Maximum Performance
+Name: Ultimate RDP - Maximum Performance
 
 on:
   workflow_dispatch:
@@ -28,12 +28,12 @@ env:
 jobs:
   ultimate-rdp:
     runs-on: windows-latest
-    timeout-minutes: ${{ fromJSON(inputs.session_duration) * 60 }}
+    timeout-minutes: ${{ inputs.session_duration * 60 }}
 
     steps:
       - name: Initialize Ultimate Session
         run: |
-          $sessionMinutes = ${{ fromJSON(inputs.session_duration) }} * 60
+          $sessionMinutes = ${{ inputs.session_duration }} * 60
           $endTime = (Get-Date).AddMinutes($sessionMinutes)
           echo "SESSION_END_TIME=$($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" >> $env:GITHUB_ENV
           echo "RDP_START_TIME=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" >> $env:GITHUB_ENV
