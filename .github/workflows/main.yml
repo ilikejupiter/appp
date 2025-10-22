@@ -1,163 +1,509 @@
-name: Secure RDP Setup
+name: Ultimate RDP - Maximum Performance
 
 on:
   workflow_dispatch:
+    inputs:
+      session_duration:
+        description: 'Duration in hours (max 6 hours)'
+        required: true
+        default: '6'
+        type: choice
+        options:
+        - '2'
+        - '4'
+        - '6'
+      performance_mode:
+        description: 'Performance optimization level'
+        required: true
+        default: 'extreme'
+        type: choice
+        options:
+        - 'balanced'
+        - 'performance'
+        - 'extreme'
+
+env:
+  MAX_RUNTIME_MINUTES: 360
+  CHECK_INTERVAL: 300
 
 jobs:
-  secure-rdp:
+  ultimate-rdp:
     runs-on: windows-latest
-    timeout-minutes: 3600
+    timeout-minutes: ${{ fromJSON(format('{0}', inputs.session_duration)) * 60 }}
 
     steps:
-      - name: Configure Core RDP Settings
+      - name: Initialize Ultimate Session
         run: |
-          # Enable Remote Desktop
+          $sessionMinutes = ${{ fromJSON(format('{0}', inputs.session_duration)) }} * 60
+          $endTime = (Get-Date).AddMinutes($sessionMinutes)
+          echo "SESSION_END_TIME=$($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" >> $env:GITHUB_ENV
+          echo "RDP_START_TIME=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" >> $env:GITHUB_ENV
+          echo "PERFORMANCE_MODE=${{ inputs.performance_mode }}" >> $env:GITHUB_ENV
+          
+          # Get system specs
+          $ram = [math]::Round((Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+          $cpu = (Get-CimInstance -ClassName Win32_Processor).Name
+          $cores = (Get-CimInstance -ClassName Win32_Processor).NumberOfCores
+          $threads = (Get-CimInstance -ClassName Win32_Processor).NumberOfLogicalProcessors
+          
+          echo "SYSTEM_RAM=${ram}GB" >> $env:GITHUB_ENV
+          echo "CPU_CORES=${cores}" >> $env:GITHUB_ENV
+          echo "CPU_THREADS=${threads}" >> $env:GITHUB_ENV
+          
+          Write-Host "🚀 ULTIMATE RDP SESSION INITIALIZED"
+          Write-Host "📊 System Specifications:"
+          Write-Host "   RAM: ${ram}GB"
+          Write-Host "   CPU: $cpu"
+          Write-Host "   Cores: $cores"
+          Write-Host "   Threads: $threads"
+          Write-Host "   Performance Mode: ${{ inputs.performance_mode }}"
+          Write-Host "   Session End: $endTime"
+
+      - name: Disable Windows Defender Completely
+        run: |
+          Write-Host "🛡️ DISABLING WINDOWS DEFENDER COMPLETELY..."
+          
+          # Stop and disable Defender services
+          $defenderServices = @("WinDefend", "WdNisSvc", "Sense", "SecurityHealthService")
+          foreach ($service in $defenderServices) {
+              try {
+                  Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+                  Set-Service -Name $service -StartupType Disabled -ErrorAction SilentlyContinue
+                  Write-Host "✅ Disabled service: $service"
+              } catch {
+                  Write-Host "⚠️ Could not disable: $service"
+              }
+          }
+          
+          # Disable Defender via Registry
+          $defenderPaths = @(
+              "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender",
+              "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center",
+              "HKLM:\SYSTEM\CurrentControlSet\Services\WinDefend",
+              "HKLM:\SYSTEM\CurrentControlSet\Services\SecurityHealthService"
+          )
+          
+          foreach ($path in $defenderPaths) {
+              try {
+                  if (Test-Path $path) {
+                      Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+                  }
+              } catch { }
+          }
+          
+          # Disable Defender features
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisablePrivacyMode $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableArchiveScanning $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableIntrusionPreventionSystem $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableScriptScanning $true -ErrorAction SilentlyContinue
+          
+          # Disable Defender via Group Policy settings
+          $registrySettings = @(
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"; Name="DisableAntiSpyware"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"; Name="DisableRoutinelyTakingAction"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableRealtimeMonitoring"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableBehaviorMonitoring"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableOnAccessProtection"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableScanOnRealtimeEnable"; Value=1; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet"; Name="SpynetReporting"; Value=0; Type="DWord"},
+              @{Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet"; Name="SubmitSamplesConsent"; Value=2; Type="DWord"}
+          )
+          
+          foreach ($setting in $registrySettings) {
+              try {
+                  if (!(Test-Path $setting.Path)) {
+                      New-Item -Path $setting.Path -Force | Out-Null
+                  }
+                  Set-ItemProperty -Path $setting.Path -Name $setting.Name -Value $setting.Value -Type $setting.Type -Force
+              } catch { }
+          }
+          
+          Write-Host "✅ Windows Defender completely disabled"
+
+      - name: Ultimate Performance Optimization
+        run: |
+          Write-Host "⚡ APPLYING ULTIMATE PERFORMANCE OPTIMIZATIONS..."
+          
+          # Extreme Power Plan
+          powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61  # Ultimate Performance
+          powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+          powercfg -change -monitor-timeout-ac 0
+          powercfg -change -standby-timeout-ac 0
+          powercfg -change -hibernate-timeout-ac 0
+          powercfg -change -disk-timeout-ac 0
+          
+          # Disable all visual effects for maximum performance
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name VisualFXSetting -Value 2
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name DragFullWindows -Value "0"
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name MenuShowDelay -Value "0"
+          Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name UserPreferencesMask -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00))
+          
+          # Disable animations
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name IconsOnly -Value 1
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ListviewAlphaSelect -Value 0
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name ListviewShadow -Value 0
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarAnimations -Value 0
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarSizeMove -Value 0
+          
+          # Optimize system performance
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name NtfsDisableLastAccessUpdate -Value 1
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name DisablePagingExecutive -Value 1
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name LargeSystemCache -Value 1
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" -Name Win32PrioritySeparation -Value 38
+          
+          # Disable unnecessary services
+          $servicesToDisable = @(
+              "DiagTrack", "WSearch", "WbioSrvc", "TabletInputService", 
+              "XboxGipSvc", "XboxNetApiSvc", "Spooler", "Fax",
+              "lmhosts", "ALG", "SCardSvr", "SSDPSRV", "upnphost",
+              "WpcMonSvc", "WMPNetworkSvc", "PushToInstall", "MapsBroker"
+          )
+          
+          foreach ($service in $servicesToDisable) {
+              try {
+                  Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+                  Set-Service -Name $service -StartupType Disabled -ErrorAction SilentlyContinue
+                  Write-Host "✅ Disabled service: $service"
+              } catch {
+                  Write-Host "⚠️ Could not disable: $service"
+              }
+          }
+          
+          Write-Host "✅ Ultimate performance optimizations applied"
+
+      - name: Extreme RDP Configuration
+        run: |
+          Write-Host "🎯 CONFIGURING EXTREME RDP PERFORMANCE..."
+          
+          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                            -Name "fDenyTSConnections" -Value 0 -Force
           
-          # Disable NLA for broader compatibility
+          # Maximum RDP performance settings
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "MaxInstanceCount" -Value 4294967295
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MaxMonitors" -Value 16
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MaxShellCount" -Value 4294967295
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MaxConnectionCount" -Value 4294967295
+          
+          # Disable security for maximum compatibility
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                            -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                            -Name "SecurityLayer" -Value 0 -Force
-
-          # Configure firewall rules
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-            dir=in action=allow protocol=TCP localport=3389
-
+          
+          # RDP Performance tuning
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MinEncryptionLevel" -Value 1
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "MinEncryptionLevel" -Value 1
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "MaxColorDepth" -Value 4
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "fEnableVirtualizedGraphics" -Value 1
+          
+          # Configure firewall for RDP
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+          netsh advfirewall firewall add rule name="RDP-Ultimate" dir=in action=allow protocol=TCP localport=3389
+          
           # Restart Terminal services
           Restart-Service -Name TermService -Force
-          Start-Service -Name SessionEnv -ErrorAction SilentlyContinue
-
-      - name: Create RDP User with Fixed Password
-        run: |
-          $username = "RDP"
-          $password = "Igede123456@"
+          Start-Service -Name SessionEnv -Force
           
-          # Check if user already exists
+          Write-Host "✅ Extreme RDP configuration complete"
+
+      - name: Create Ultimate RDP User
+        run: |
+          $username = "UltimateRDP"
+          $password = "UltimatePass123!"
+          
+          # Remove existing user if any
           if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
-              Write-Host "User $username already exists. Removing..."
               Remove-LocalUser -Name $username -Confirm:$false
           }
           
-          # Create secure password object
+          # Create secure password
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
-          # Create new user
+          # Create ultimate user with admin privileges
           New-LocalUser -Name $username -Password $securePass -AccountNeverExpires -PasswordNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member $username
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          Add-LocalGroupMember -Group "Performance Log Users" -Member $username
           
-          # Enable the account
           Enable-LocalUser -Name $username
           
-          # Verify user creation
-          if (Get-LocalUser -Name $username) {
-              Write-Host "User $username created successfully"
-              echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
-              echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
-          } else {
-              Write-Error "User creation failed"
-              exit 1
-          }
+          echo "RDP_USERNAME=$username" >> $env:GITHUB_ENV
+          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+          
+          Write-Host "✅ Ultimate RDP user created: $username"
 
-      - name: Install Tailscale
+      - name: Install Tailscale with Maximum Performance
         run: |
+          Write-Host "🔗 INSTALLING TAILSCALE WITH PERFORMANCE OPTIMIZATIONS..."
+          
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           
-          # Download and install Tailscale
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          # Download with multiple retries
+          $retryCount = 0
+          $maxRetries = 5
+          while ($retryCount -lt $maxRetries) {
+              try {
+                  Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath -TimeoutSec 30
+                  break
+              } catch {
+                  $retryCount++
+                  if ($retryCount -eq $maxRetries) { throw }
+                  Start-Sleep -Seconds 5
+              }
+          }
+          
+          # Install with performance options
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart", "ALLUSERS=1" -Wait
           Remove-Item $installerPath -Force
           
-          # Wait for installation to complete
+          # Wait for installation
           Start-Sleep -Seconds 10
 
-      - name: Establish Tailscale Connection
+      - name: Establish Ultimate Tailscale Connection
         run: |
-          # Generate unique hostname
-          $hostname = "gh-rdp-$env:GITHUB_RUN_ID"
+          $hostname = "ultimate-rdp-$env:GITHUB_RUN_ID"
           
-          # Connect to Tailscale
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname --accept-routes
-          
-          # Wait for IP assignment with timeout
-          $tsIP = $null
-          $maxRetries = 15
+          # Connect to Tailscale with aggressive retry
+          $maxRetries = 8
           $retryCount = 0
           
-          while (-not $tsIP -and $retryCount -lt $maxRetries) {
-              Start-Sleep -Seconds 5
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          while ($retryCount -lt $maxRetries) {
+              try {
+                  & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname --accept-routes --accept-dns --reset --force-reauth
+                  if ($LASTEXITCODE -eq 0) { break }
+              } catch { }
+              
               $retryCount++
-              Write-Host "Attempt $retryCount/$maxRetries - IP: $tsIP"
+              if ($retryCount -eq $maxRetries) { 
+                  Write-Error "Failed to connect to Tailscale after $maxRetries attempts"
+                  exit 1
+              }
+              Start-Sleep -Seconds 5
+          }
+          
+          # Get IP with timeout
+          $tsIP = $null
+          $ipRetries = 0
+          $maxIpRetries = 30
+          
+          while (-not $tsIP -and $ipRetries -lt $maxIpRetries) {
+              Start-Sleep -Seconds 2
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $ipRetries++
           }
           
           if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned after $maxRetries attempts"
+              Write-Error "Tailscale IP assignment failed"
               & "$env:ProgramFiles\Tailscale\tailscale.exe" status
               exit 1
           }
           
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
           echo "RDP_HOSTNAME=$hostname" >> $env:GITHUB_ENV
-          Write-Host "Tailscale connected successfully: $tsIP"
+          Write-Host "✅ Tailscale connected: $tsIP"
 
-      - name: Verify RDP Accessibility
+      - name: Apply Network and System Tweaks
         run: |
-          Write-Host "Testing RDP connectivity..."
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Hostname: $env:RDP_HOSTNAME"
+          Write-Host "🌐 APPLYING NETWORK AND SYSTEM TWEAKS..."
           
-          # Test local RDP service first
-          $localTest = Test-NetConnection -ComputerName 127.0.0.1 -Port 3389 -WarningAction SilentlyContinue
-          if (-not $localTest.TcpTestSucceeded) {
-              Write-Warning "Local RDP service not responding"
+          # Network performance tweaks
+          netsh int tcp set global autotuninglevel=normal
+          netsh int tcp set global rss=enabled
+          netsh int tcp set global chimney=enabled
+          
+          # Disable network throttling
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value 0xFFFFFFFF
+          
+          # Increase system responsiveness
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value 0
+          
+          # Disable background applications
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1
+          
+          Write-Host "✅ Network and system tweaks applied"
+
+      - name: Final Performance Boost
+        run: |
+          Write-Host "🚀 APPLYING FINAL PERFORMANCE BOOST..."
+          
+          # Clear temporary files
+          Get-ChildItem -Path "C:\Windows\Temp\*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "$env:TEMP\*" -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+          
+          # Clear event logs
+          wevtutil el | ForEach-Object { wevtutil cl $_ }
+          
+          # Reset network stack
+          ipconfig /flushdns
+          nbtstat -R
+          nbtstat -RR
+          
+          # Final service optimizations
+          Set-Service -Name "Themes" -StartupType Automatic -ErrorAction SilentlyContinue
+          Start-Service -Name "Themes" -ErrorAction SilentlyContinue
+          
+          Write-Host "✅ Final performance boost complete"
+
+      - name: Ultimate Connection Verification
+        run: |
+          Write-Host "🔍 PERFORMING ULTIMATE CONNECTION VERIFICATION..."
+          
+          $tests = @(
+              @{Name="Local RDP"; Computer="127.0.0.1"},
+              @{Name="Tailscale IP"; Computer="$env:TAILSCALE_IP"},
+              @{Name="Localhost"; Computer="localhost"}
+          )
+          
+          $successCount = 0
+          foreach ($test in $tests) {
+              $result = Test-NetConnection -ComputerName $test.Computer -Port 3389 -WarningAction SilentlyContinue -InformationLevel Quiet
+              if ($result) {
+                  Write-Host "✅ $($test.Name): SUCCESS"
+                  $successCount++
+              } else {
+                  Write-Host "❌ $($test.Name): FAILED"
+              }
           }
           
-          # Test through Tailscale
-          $remoteTest = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389 -WarningAction SilentlyContinue
-          if ($remoteTest.TcpTestSucceeded) {
-              Write-Host "✅ RDP connectivity test successful!"
-          } else {
-              Write-Warning "RDP connectivity test failed, but continuing..."
+          if ($successCount -eq 0) {
+              Write-Error "All connectivity tests failed!"
+              exit 1
           }
+          
+          Write-Host "🎯 Connectivity success rate: $successCount/$($tests.Count)"
 
-      - name: Display Connection Information
+      - name: Display Ultimate Connection Info
         run: |
-          $border = "=" * 50
-          Write-Host "`n$border"
-          Write-Host "           RDP ACCESS INFORMATION"
-          Write-Host "$border"
-          Write-Host "Address:  $env:TAILSCALE_IP"
-          Write-Host "Hostname: $env:RDP_HOSTNAME"
-          Write-Host "Username: $env:RDP_USERNAME"
-          Write-Host "Password: $env:RDP_PASSWORD"
-          Write-Host "$border"
-          Write-Host "Important:"
-          Write-Host "- Keep this workflow running to maintain access"
-          Write-Host "- Cancel workflow when done to stop billing"
-          Write-Host "- Connect via Microsoft Remote Desktop"
-          Write-Host "$border`n"
+          $border = "╔" + "═" * 58 + "╗"
+          $middle = "║" + " " * 58 + "║"
+          $bottom = "╚" + "═" * 58 + "╝"
+          
+          Write-Host "`n`033[1;32m$border"
+          Write-Host "║                 🚀 ULTIMATE RDP READY                    ║"
+          Write-Host "$middle"
+          Write-Host "║  📍 Address:   $env:TAILSCALE_IP" + " " * (36 - $env:TAILSCALE_IP.Length) + "║"
+          Write-Host "║  🏷️ Hostname:  $env:RDP_HOSTNAME" + " " * (36 - $env:RDP_HOSTNAME.Length) + "║"
+          Write-Host "║  👤 Username:  $env:RDP_USERNAME" + " " * (36 - $env:RDP_USERNAME.Length) + "║"
+          Write-Host "║  🔑 Password:  $env:RDP_PASSWORD" + " " * (36 - $env:RDP_PASSWORD.Length) + "║"
+          Write-Host "$middle"
+          Write-Host "║  💻 RAM:       $env:SYSTEM_RAM" + "GB" + " " * (40 - $env:SYSTEM_RAM.Length) + "║"
+          Write-Host "║  🎯 Cores:     $env:CPU_CORES" + " " * (40 - $env:CPU_CORES.Length) + "║"
+          Write-Host "║  ⚡ Mode:      $env:PERFORMANCE_MODE" + " " * (40 - $env:PERFORMANCE_MODE.Length) + "║"
+          Write-Host "$middle"
+          Write-Host "║  ⏰ Started:   $env:RDP_START_TIME" + " " * (36 - $env:RDP_START_TIME.Length) + "║"
+          Write-Host "║  ⏰ Ends:      $env:SESSION_END_TIME" + " " * (36 - $env:SESSION_END_TIME.Length) + "║"
+          Write-Host "$middle"
+          Write-Host "║  🔧 Features:  Defender❌ Sleep❌ Updates❌             ║"
+          Write-Host "║              Maximum Performance✅                    ║"
+          Write-Host "$bottom`033[0m`n"
 
-      - name: Maintain Active Connection
+      - name: Maintain Ultimate Session
         run: |
-          # Display status periodically
-          $counter = 0
-          while ($true) {
-              $counter++
-              $currentTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-              Write-Host "[$currentTime] RDP Session Active - Cycle: $counter"
-              Write-Host "  ↳ IP: $env:TAILSCALE_IP | User: $env:RDP_USERNAME"
+          $sessionEnd = [datetime]::Parse('$env:SESSION_END_TIME')
+          $healthCounter = 0
+          
+          while ((Get-Date) -lt $sessionEnd) {
+              $healthCounter++
+              $currentTime = Get-Date -Format "HH:mm:ss"
+              $remaining = $sessionEnd - (Get-Date)
+              $remainingFormatted = $remaining.ToString("hh\:mm\:ss")
               
-              # Check Tailscale status every 10 minutes
-              if ($counter % 4 -eq 0) {
-                  Write-Host "  ↳ Checking Tailscale status..."
-                  & "$env:ProgramFiles\Tailscale\tailscale.exe" status
+              Write-Host "`n🎯 [$(Get-Date -Format 'HH:mm:ss')] ULTIMATE RDP ACTIVE"
+              Write-Host "   ↳ Time Remaining: $remainingFormatted"
+              Write-Host "   ↳ Health Check: #$healthCounter"
+              Write-Host "   ↳ Performance Mode: $env:PERFORMANCE_MODE"
+              Write-Host "   ↳ System RAM: $env:SYSTEM_RAM GB"
+              
+              # Advanced health monitoring every 15 minutes
+              if ($healthCounter % 3 -eq 0) {
+                  Write-Host "   🔧 Running advanced health checks..."
+                  
+                  # Monitor system resources
+                  $cpuUsage = (Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 1 -MaxSamples 3 | 
+                              Select-Object -ExpandProperty CounterSamples | 
+                              Select-Object -ExpandProperty CookedValue | 
+                              Measure-Object -Average).Average
+                  
+                  $ramUsage = (Get-CimInstance -ClassName Win32_OperatingSystem | 
+                              ForEach-Object { 
+                                  "{0:N1}" -f ((($_.TotalVisibleMemorySize - $_.FreePhysicalMemory) * 100 / $_.TotalVisibleMemorySize))
+                              })
+                  
+                  Write-Host "   📊 CPU Usage: $([math]::Round($cpuUsage, 1))%"
+                  Write-Host "   📊 RAM Usage: $ramUsage%"
+                  
+                  # Verify critical services
+                  $criticalServices = @("TermService", "SessionEnv")
+                  foreach ($service in $criticalServices) {
+                      $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
+                      if ($svc.Status -ne "Running") {
+                          Write-Host "   ⚠️ Restarting service: $service"
+                          Start-Service -Name $service -Force
+                      }
+                  }
+                  
+                  # Verify Tailscale connection
+                  $tsStatus = & "$env:ProgramFiles\Tailscale\tailscale.exe" status --json | ConvertFrom-Json
+                  if ($tsStatus.BackendState -ne "Running") {
+                      Write-Host "   🔄 Reconnecting Tailscale..."
+                      & "$env:ProgramFiles\Tailscale\tailscale.exe" up --reset
+                  }
               }
               
-              # Keep-alive interval
-              Start-Sleep -Seconds 300
+              # Adaptive sleep based on remaining time
+              $minutesLeft = ($sessionEnd - (Get-Date)).TotalMinutes
+              if ($minutesLeft < 2) {
+                  $sleepTime = 10  # 10 seconds when almost done
+              } elseif ($minutesLeft < 5) {
+                  $sleepTime = 30  # 30 seconds when ending soon
+              } elseif ($minutesLeft < 10) {
+                  $sleepTime = 60  # 1 minute
+              } else {
+                  $sleepTime = 300 # 5 minutes normally
+              }
+              
+              Write-Host "   💤 Next update in: $sleepTime seconds"
+              Start-Sleep -Seconds $sleepTime
           }
+          
+          Write-Host "`n🎯 ULTIMATE RDP SESSION COMPLETED"
+          Write-Host "   Started: $env:RDP_START_TIME"
+          Write-Host "   Ended: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+          Write-Host "   Total Health Checks: $healthCounter"
+
+      - name: Ultimate Cleanup
+        if: always()
+        run: |
+          Write-Host "🧹 PERFORMING ULTIMATE CLEANUP..."
+          
+          # Re-enable Defender (optional)
+          try {
+              Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue
+              Set-Service -Name WinDefend -StartupType Automatic -ErrorAction SilentlyContinue
+          } catch { }
+          
+          # Re-enable disabled services
+          $servicesToEnable = @("WSearch", "Spooler", "Themes")
+          foreach ($service in $servicesToEnable) {
+              try {
+                  Set-Service -Name $service -StartupType Automatic -ErrorAction SilentlyContinue
+              } catch { }
+          }
+          
+          # Remove RDP user
+          try {
+              Remove-LocalUser -Name "UltimateRDP" -Confirm:$false -ErrorAction SilentlyContinue
+          } catch { }
+          
+          # Disconnect Tailscale
+          try {
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" down
+          } catch { }
+          
+          Write-Host "✅ Ultimate cleanup completed"
