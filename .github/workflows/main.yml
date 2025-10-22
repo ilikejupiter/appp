@@ -23,18 +23,17 @@ on:
         - 'extreme'
 
 env:
-  MAX_RUNTIME_MINUTES: 360
   CHECK_INTERVAL: 300
 
 jobs:
   ultimate-rdp:
     runs-on: windows-latest
-    timeout-minutes: ${{ fromJSON(format('{0}', inputs.session_duration)) * 60 }}
+    timeout-minutes: ${{ fromJSON(inputs.session_duration) * 60 }}
 
     steps:
       - name: Initialize Ultimate Session
         run: |
-          $sessionMinutes = ${{ fromJSON(format('{0}', inputs.session_duration)) }} * 60
+          $sessionMinutes = ${{ fromJSON(inputs.session_duration) }} * 60
           $endTime = (Get-Date).AddMinutes($sessionMinutes)
           echo "SESSION_END_TIME=$($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" >> $env:GITHUB_ENV
           echo "RDP_START_TIME=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" >> $env:GITHUB_ENV
