@@ -1,43 +1,37 @@
-Name: Ultimate RDP - Maximum Performance
+name: Ultimate RDP - Maximum Performance
 
 on:
+  # Hapus 'workflow_dispatch' untuk menghilangkan input
+  # Workflow ini sekarang hanya dapat dijalankan secara manual (tetap)
+  # tetapi tanpa opsi input
   workflow_dispatch:
-    inputs:
-      session_duration:
-        description: 'Duration in hours (max 6 hours)'
-        required: true
-        default: '6'
-        type: choice
-        options:
-        - '2'
-        - '4'
-        - '6'
-      performance_mode:
-        description: 'Performance optimization level'
-        required: true
-        default: 'extreme'
-        type: choice
-        options:
-        - 'balanced'
-        - 'performance'
-        - 'extreme'
 
 env:
   CHECK_INTERVAL: 300
+  # Tetapkan nilai default yang diminta
+  SESSION_DURATION_HOURS: 6
+  PERFORMANCE_MODE_LEVEL: 'extreme'
+  RDP_STATIC_PASSWORD: 'Igede123456@'
 
 jobs:
   ultimate-rdp:
     runs-on: windows-latest
-    timeout-minutes: ${{ inputs.session_duration * 60 }}
+    # Gunakan variabel env untuk timeout. GitHub Actions dapat mengalikan string numerik
+    # di expression, tapi menghilangkan fromJSON() dan menetapkan ke env adalah yang terbaik
+    # untuk menghindari masalah 'Unexpected symbol: *' di baris ini.
+    timeout-minutes: ${{ env.SESSION_DURATION_HOURS * 60 }}
 
     steps:
       - name: Initialize Ultimate Session
         run: |
-          $sessionMinutes = ${{ inputs.session_duration }} * 60
+          # Ambil nilai dari environment variable
+          $sessionMinutes = ${{ env.SESSION_DURATION_HOURS }} * 60
           $endTime = (Get-Date).AddMinutes($sessionMinutes)
+          
+          # Simpan ke GITHUB_ENV
           echo "SESSION_END_TIME=$($endTime.ToString('yyyy-MM-dd HH:mm:ss'))" >> $env:GITHUB_ENV
           echo "RDP_START_TIME=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" >> $env:GITHUB_ENV
-          echo "PERFORMANCE_MODE=${{ inputs.performance_mode }}" >> $env:GITHUB_ENV
+          echo "PERFORMANCE_MODE=${{ env.PERFORMANCE_MODE_LEVEL }}" >> $env:GITHUB_ENV
           
           # Get system specs
           $ram = [math]::Round((Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
@@ -55,7 +49,7 @@ jobs:
           Write-Host "   CPU: $cpu"
           Write-Host "   Cores: $cores"
           Write-Host "   Threads: $threads"
-          Write-Host "   Performance Mode: ${{ inputs.performance_mode }}"
+          Write-Host "   Performance Mode: ${{ env.PERFORMANCE_MODE_LEVEL }}"
           Write-Host "   Session End: $endTime"
 
       - name: Disable Windows Defender Completely
@@ -213,7 +207,7 @@ jobs:
       - name: Create Ultimate RDP User
         run: |
           $username = "UltimateRDP"
-          $password = "UltimatePass123!"
+          $password = "${{ env.RDP_STATIC_PASSWORD }}" # Menggunakan password yang diminta
           
           # Remove existing user if any
           if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
