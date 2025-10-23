@@ -1,26 +1,16 @@
-name: Secure RDP Setup (Optimized & Enhanced)
+name: RDP Setup (Python Only)
 
 on:
   workflow_dispatch: # Memungkinkan trigger manual
 
 jobs:
   secure-rdp:
-    # KOMENTAR SANG AHLI:
-    # Runner 'windows-latest' (saat ini Windows Server 2022) memiliki 7 GB RAM.
-    # Jika Anda serius dan membutuhkan kekuatan (misal 128 GB RAM), Anda
-    # memerlukan "GitHub-hosted larger runners" yang merupakan fitur berbayar.
-    # Ganti 'windows-latest' dengan runner besar Anda jika Anda memilikinya.
     runs-on: windows-latest
-    
-    # Timeout maksimum adalah 360 menit (6 jam).
-    timeout-minutes: 360
+    timeout-minutes: 360 # Timeout 6 jam
 
     steps:
     - name: Disable Windows Defender
-      # KOMENTAR SANG AHLI:
-      # Sesuai permintaan Anda untuk "tanpa pengamanan yg berat".
-      # Kita menonaktifkan pemantauan real-time untuk kecepatan maksimum.
-      # Tidak disarankan untuk produksi, tapi sempurna untuk runner sekali pakai.
+      # Menonaktifkan pemantauan real-time sesuai permintaan
       run: |
         Write-Host "Menonaktifkan Microsoft Defender..."
         Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
@@ -32,10 +22,7 @@ jobs:
       shell: powershell
 
     - name: Configure Core RDP Settings
-      # KOMENTAR SANG AHLI:
-      # Mengaktifkan RDP dan menonaktifkan NLA (Network Level Authentication).
-      # Menonaktifkan NLA adalah permintaan "tanpa halangan" Anda;
-      # ini memungkinkan koneksi dari klien RDP mana pun tanpa pemeriksaan awal.
+      # Mengaktifkan RDP dan menonaktifkan NLA (sesuai permintaan "tanpa halangan")
       run: |
         Write-Host "Mengkonfigurasi RDP..."
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
@@ -51,14 +38,11 @@ jobs:
       shell: powershell
 
     - name: Create RDP User
-      # KOMENTAR SANG AHLI:
-      # Saya MENGIKUTI permintaan Anda untuk kata sandi tetap.
-      # PERINGATAN KERAS: Dalam ribuan tahun saya, ini adalah praktik yang
-      # BURUK. Siapa pun yang melihat log build Anda dapat masuk.
-      # Cara yang "Benar" adalah menggunakan GitHub Secrets: ${{ secrets.RDP_PASSWORD }}
+      # Menggunakan username dan password tetap sesuai permintaan
+      # PERINGATAN: Ini tidak aman. Sebaiknya gunakan GitHub Secrets.
       run: |
         $username = "RDP"
-        $password = "Igede123456@" # Sesuai permintaan, password tidak diubah
+        $password = "Igede123456@" # Sesuai permintaan
         Write-Host "Membuat user RDP: $username"
 
         if (Get-LocalUser -Name $username -ErrorAction SilentlyContinue) {
@@ -79,17 +63,10 @@ jobs:
         echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
       shell: powershell
 
-    - name: Install 'The Best' Software Toolkit (Python, VSCode, Git, etc.)
-      # KOMENTAR SANG AHLI:
-      # Inilah peningkatannya. RDP kosong tidak ada gunanya.
-      # Kita gunakan Chocolatey (package manager) untuk menginstal:
-      # 1. Python 3 (Terbaru)
-      # 2. Git (Kontrol Versi)
-      # 3. VSCode (Editor Kode)
-      # 4. Google Chrome (Browser)
-      # 5. 7-Zip (Arsip)
+    - name: Install Python 3
+      # MODIFIKASI: Hanya menginstal Python
       run: |
-        Write-Host "Memulai instalasi 'Expert Toolkit'..."
+        Write-Host "Memulai instalasi Python 3..."
         
         # 1. Install Chocolatey
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
@@ -97,12 +74,12 @@ jobs:
         Write-Host "Menunggu Chocolatey siap..."
         Start-Sleep -Seconds 5
 
-        # 2. Install software
-        Write-Host "Menginstal Python 3 (Terbaru), Git, VSCode, Chrome, dan 7zip..."
-        choco install python git vscode googlechrome 7zip -y
+        # 2. Install software (HANYA PYTHON)
+        Write-Host "Menginstal Python 3 (Terbaru)..."
+        choco install python -y
         
-        Write-Host "INSTALASI 'EXPERT TOOLKIT' SELESAI."
-        Write-Host "Python, Git, VSCode, Chrome, 7zip sekarang tersedia di RDP."
+        Write-Host "INSTALASI PYTHON 3 SELESAI."
+        Write-Host "Python 3 (Terbaru) sekarang tersedia di RDP."
       shell: powershell
 
     - name: Install Tailscale
@@ -120,10 +97,7 @@ jobs:
       shell: powershell
 
     - name: Establish Tailscale Connection
-      # KOMENTAR SANG AHLI:
-      # Ini adalah bagian penting. Kita menggunakan Auth Key dari Secrets
-      # untuk menghubungkan runner ini ke jaringan pribadi Tailscale Anda.
-      # Ini *jauh* lebih aman daripada membuka port RDP ke internet publik.
+      # Menggunakan Auth Key dari Secrets untuk koneksi aman
       run: |
         Write-Host "Menyambungkan ke Tailscale..."
         $hostname = "gh-rdp-$env:GITHUB_RUN_ID"
@@ -168,12 +142,11 @@ jobs:
       shell: powershell
 
     - name: Display Connection Information
-      # KOMENTAR SANG AHLI:
-      # Informasi penting. Jangan dibagikan.
+      # MODIFIKASI: Hanya menampilkan Python di daftar software
       run: |
         $border = "=" * 60
         Write-Host "`n$border"
-        Write-Host "           INFORMASI AKSES RDP YANG DISEMPURNAKAN"
+        Write-Host "           INFORMASI AKSES RDP (PYTHON ONLY)"
         Write-Host "$border"
         Write-Host "  Address (IP)   : $env:TAILSCALE_IP"
         Write-Host "  Hostname       : $env:RDP_HOSTNAME"
@@ -182,10 +155,6 @@ jobs:
         Write-Host "$border"
         Write-Host "  PERANGKAT LUNAK SIAP PAKAI:"
         Write-Host "  - Python 3 (Terbaru)"
-        Write-Host "  - Git"
-        Write-Host "  - Visual Studio Code"
-        Write-Host "  - Google Chrome"
-        Write-Host "  - 7-Zip"
         Write-Host "$border"
         Write-Host "  PENTING: JANGAN TUTUP JOB GITHUB ACTIONS INI."
         Write-Host "  Biarkan workflow ini tetap berjalan untuk menjaga sesi."
@@ -194,11 +163,7 @@ jobs:
       shell: powershell
 
     - name: Maintain Active Connection (Keep-Alive)
-      # KOMENTAR SANG AHLI:
-      # Trik kuno. Loop tak terbatas dengan 'sleep' untuk
-      # mencegah GitHub menghentikan runner karena tidak aktif.
-      # Ini akan berjalan sampai Anda menghentikannya secara manual atau
-      # mencapai timeout 6 jam.
+      # Loop untuk menjaga runner tetap aktif
       run: |
         $counter = 0
         while ($true) {
